@@ -61,6 +61,46 @@ class LinearRegression(override val uid: String)
   def this() = this(Identifiable.randomUID("LinReg"))
 
   // Обучение модели линейной регрессии.
+  // override def fit(dataset: Dataset[_]): LinearRegressionModel = {
+  //   implicit val vectorEncoder: Encoder[Vector] = ExpressionEncoder()
+  //   implicit val doubleEncoder: Encoder[Double] = ExpressionEncoder()
+
+  // Конвертируем входные данные в пары вектор-метка
+  //   val vectors: Dataset[(Vector, Double)] = dataset.select(
+  //     dataset($(inputCol)).as[Vector],
+  //     dataset($(labelCol)).as[Double]
+  //   )
+
+  //   val numFeatures: Int = MetadataUtils.getNumFeatures(dataset, $(inputCol))
+  //   var weights: BreezeDenseVector[Double] =
+  //     BreezeDenseVector.rand[Double](numFeatures + 1)
+
+  //   (0 until $(epochs)).foreach { _ =>
+  //     val summary = vectors.rdd
+  //       .mapPartitions { data =>
+  //         val summarizer = new MultivariateOnlineSummarizer()
+  //         data.foreach { v =>
+  //           val x = v.asBreeze(0 until weights.size).toDenseVector
+  //           val y = v.asBreeze(weights.size)
+  //           val loss = sum(x * weights) - y
+  //           val grad = x * loss
+  //           summarizer.add(fromBreeze(grad))
+  //         }
+  //         Iterator(summarizer)
+  //       }
+  //       .reduce(_ merge _)
+
+  //     weights = weights - $(lr) * summary.mean.asBreeze
+  //   }
+
+  //   copyValues(
+  //     new LinearRegressionModel(
+  //       Vectors.fromBreeze(weights(0 until weights.size - 1)).toDense,
+  //       weights(weights.size - 1)
+  //     )
+  //   ).setParent(this)
+  // }
+
   override def fit(dataset: Dataset[_]): LinearRegressionModel = {
     implicit val vectorEncoder: Encoder[Vector] = ExpressionEncoder()
     implicit val doubleEncoder: Encoder[Double] = ExpressionEncoder()
@@ -72,30 +112,36 @@ class LinearRegression(override val uid: String)
     )
 
     val numFeatures: Int = MetadataUtils.getNumFeatures(dataset, $(inputCol))
-    var weights: BreezeDenseVector[Double] =
-      BreezeDenseVector.rand[Double](numFeatures + 1)
+    val initialWeights: DenseVector[Double] =
+      DenseVector.fill(numFeatures + 1)(0.0)
+
+    var weights: DenseVector[Double] = initialWeights
 
     (0 until $(epochs)).foreach { _ =>
-      val summary = vectors.rdd
+      val (gradSum, count) = vectors.rdd
         .mapPartitions { data =>
           val summarizer = new MultivariateOnlineSummarizer()
           data.foreach { v =>
-            val x = v.asBreeze(0 until weights.size).toDenseVector
-            val y = v.asBreeze(weights.size)
-            val loss = sum(x * weights) - y
-            val grad = x * loss
+            val x = v._1.toArray :+ 1.0 // добавляем единицу для bias
+            val y = v._2
+            val loss = (x dot weights) - y
+            val grad = DenseVector(x) * loss
             summarizer.add(fromBreeze(grad))
           }
-          Iterator(summarizer)
+          Iterator((summarizer, summarizer.count))
         }
-        .reduce(_ merge _)
+        .reduce { case ((s1, c1), (s2, c2)) =>
+          (s1.merge(s2), c1 + c2)
+        }
 
-      weights = weights - $(lr) * summary.mean.asBreeze
+      val meanGrad = gradSum.mean.asBreeze
+
+      weights -= (meanGrad * $(lr)) / count.toDouble
     }
 
     copyValues(
       new LinearRegressionModel(
-        Vectors.fromBreeze(weights(0 until weights.size - 1)).toDense,
+        Vectors.dense(weights.toArray.slice(0, weights.size - 1)),
         weights(weights.size - 1)
       )
     ).setParent(this)
