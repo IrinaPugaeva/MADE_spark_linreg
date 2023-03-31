@@ -89,7 +89,8 @@ class LinearRegression(override val uid: String)
     var bias: Double = 0.0
     var error: Double = Double.MaxValue
 
-    breakable { for (i <- 1 to getMaxIter) {
+    breakable {
+      for (i <- 1 to getMaxIter) {
         val (gradSum, count) = vectors.rdd
           .mapPartitions((data: Iterator[(Vector, Double)]) => {
             val weightsSummarizer = new MultivariateOnlineSummarizer()
@@ -120,13 +121,15 @@ class LinearRegression(override val uid: String)
 
         var meanGradBias = (-2.0) * getLR * error
         bias -= meanGradBias
-      }}
+      }
+    }
 
-      // Return fitted model
-      val lrModel = copyValues(new LinearRegressionModel(uid, new DenseVector(weights.toArray), bias))
-      lrModel
+    // Return fitted model
+    val lrModel = copyValues(
+      new LinearRegressionModel(uid, new DenseVector(weights.toArray), bias)
+    )
+    lrModel
   }
-
 
   override def copy(extra: ParamMap): Estimator[LinearRegressionModel] =
     defaultCopy(extra)
@@ -135,7 +138,6 @@ class LinearRegression(override val uid: String)
 
 }
 
-
 class LinearRegressionModel private[made] (
     override val uid: String,
     val weights: DenseVector,
@@ -143,7 +145,6 @@ class LinearRegressionModel private[made] (
 ) extends RegressionModel[Vector, LinearRegressionModel]
     with LinearRegressionParams
     with MLWritable {
-
 
   private[made] def this(weights: DenseVector, bias: Double) =
     this(Identifiable.randomUID("LinReg"), weights.toDense, bias)
@@ -179,12 +180,12 @@ class LinearRegressionModel private[made] (
       sqlContext.createDataFrame(Seq(vectors)).write.parquet(path + "/vectors")
     }
   }
-  
-    override def predict(features: Vector): Double = {
+
+  override def predict(features: Vector): Double = {
     // Breeze prediction
     (features.asBreeze dot weights.asBreeze) + bias
   }
-  
+
 }
 
 object LinearRegressionModel extends MLReadable[LinearRegressionModel] {
