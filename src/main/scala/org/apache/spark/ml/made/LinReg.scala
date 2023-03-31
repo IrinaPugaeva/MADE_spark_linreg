@@ -27,21 +27,17 @@ import org.apache.spark.sql.types.StructType
 import scala.util.control.Breaks.{break, breakable}
 import org.apache.spark.mllib
 
-trait HasLR extends Params {
-  final val lr: DoubleParam =
-    new DoubleParam(this, "lr", "gd learning rate", ParamValidators.gtEq(0))
-  final def getLR: Double = $(lr)
-}
 
 trait LinearRegressionParams
     extends HasInputCol
     with HasOutputCol
     with HasLabelCol
-    with HasMaxIter
-    with HasLR {
+    with HasMaxIter{
   def setInputCol(value: String): this.type = set(inputCol, value)
   def setOutputCol(value: String): this.type = set(outputCol, value)
   def setLabelCol(value: String): this.type = set(labelCol, value)
+  final val lr: DoubleParam = new DoubleParam(this, "lr", "gd learning rate", ParamValidators.gtEq(0))
+  final def getLR: Double = $(lr)
 
   protected def validateAndTransformSchema(schema: StructType): StructType = {
     SchemaUtils.checkColumnType(schema, getInputCol, new VectorUDT())
